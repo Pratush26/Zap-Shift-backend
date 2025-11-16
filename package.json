@@ -1,0 +1,22 @@
+{
+  "name": "zap-shift-backend",
+  "version": "1.0.0",
+  "description": "This is a courier website named zap shift's backend server",
+  "keywords": [
+    "zap",
+    "shift",
+    "backend"
+  ],
+  "license": "ISC",
+  "author": "Pratush Barua",
+  "type": "module",
+  "main": "index.js",
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "dependencies": {
+    "cors": "^2.8.5",
+    "dotenv": "^17.2.3",
+    "express": "^5.1.0"
+  }
+}
