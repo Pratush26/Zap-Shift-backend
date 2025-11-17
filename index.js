@@ -1,15 +1,42 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
+import { MongoClient, ServerApiVersion } from "mongodb";
 
 dotenv.config();
 const app = express();
-const PORT = process.env.PORT || 2000;
+const port = process.env.PORT || 2000;
 const uri = process.env.DB;
 
 app.use(cors());
 app.use(express.json());
 
-app.get("/", (req, res) => res.send("Server is getting!"))
+const client = new MongoClient(uri, {
+    serverApi: {
+        version: ServerApiVersion.v1,
+        strict: true,
+        deprecationErrors: true,
+    },
+});
 
-app.listen(PORT, () => console.log(`server running on port: ${PORT}`))
+//listeners
+client.connect()
+    .then(() => {
+        app.listen(port, () => {
+            console.log(`Hero Apps Server listening ${port}`);
+            console.log(`Hero Apps Server Connected with DB`);
+        });
+    })
+    .catch((err) => {
+        console.log(err);
+    });
+
+//DB & collections
+const database = client.db("ZapShift");
+const divisions = database.collection("divisions");
+
+app.get("/", async (req, res) => res.send("Server is getting!"))
+app.get("/division", async (req, res) => {
+    const result = await divisions.find().toArray()
+    res.send(result)
+})
