@@ -1,7 +1,7 @@
 import express from "express";
 import cors from "cors";
 import dotenv from "dotenv";
-import { MongoClient, ServerApiVersion } from "mongodb";
+import { MongoClient, ObjectId, ServerApiVersion } from "mongodb";
 
 dotenv.config();
 const app = express();
@@ -19,24 +19,33 @@ const client = new MongoClient(uri, {
     },
 });
 
-//listeners
+//  listeners
 client.connect()
-    .then(() => {
-        app.listen(port, () => {
-            console.log(`Hero Apps Server listening ${port}`);
-            console.log(`Hero Apps Server Connected with DB`);
-        });
-    })
-    .catch((err) => {
-        console.log(err);
-    });
+    .then(() => app.listen(port, () => console.log(`Hero App's Server listening ${port} and successfully connected with DB.`)))
+    .catch((err) => console.log(err))
 
-//DB & collections
+//  DB & collections
 const database = client.db("ZapShift");
-const divisions = database.collection("divisions");
+const divisionSet = database.collection("divisions");
+const reviewSet = database.collection("reviews");
+const serviceSet = database.collection("services");
+const wareHouseSet = database.collection("wareHouses");
 
+//  Public Api
 app.get("/", async (req, res) => res.send("Server is getting!"))
+app.get("/reviews", async (req, res) => {
+    const result = await reviewSet.find().toArray()
+    res.send(result)
+})
+app.get("/services", async (req, res) => {
+    const result = await serviceSet.find().toArray()
+    res.send(result)
+})
+app.get("/ware-houses", async (req, res) => {
+    const result = await wareHouseSet.find().toArray()
+    res.send(result)
+})
 app.get("/division", async (req, res) => {
-    const result = await divisions.find().toArray()
+    const result = await divisionSet.find().toArray()
     res.send(result)
 })
