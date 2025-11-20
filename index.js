@@ -42,10 +42,14 @@ app.get("/services", async (req, res) => {
     res.send(result)
 })
 app.get("/ware-houses", async (req, res) => {
-    const result = await wareHouseSet.find().toArray()
+    const result = await wareHouseSet.find({status: "active"}).project({city: 0, status: 0, flowchart: 0}).toArray()
     res.send(result)
 })
-app.get("/division", async (req, res) => {
+app.get("/branches", async (req, res) => {
+    const result = await wareHouseSet.find({status: "active"}).project({district: 1}).toArray()
+    res.send(result)
+})
+app.get("/divisions", async (req, res) => {
     const result = await divisionSet.find().toArray()
     res.send(result)
 })
