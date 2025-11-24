@@ -3,6 +3,7 @@ import cors from "cors";
 import dotenv from "dotenv";
 import { MongoClient, ObjectId, ServerApiVersion } from "mongodb";
 import Stripe from "stripe";
+import { priceCalculator } from "./utils/priceCalculator.js";
 
 dotenv.config();
 const app = express();
@@ -58,6 +59,8 @@ app.get("/divisions", async (req, res) => {
 })
 
 app.post("/rider-request", async (req, res) => {
+    const exists = await employeeSet.findOne({ email: req.body.email })
+    if (exists) return res.status(409).send({ message: "You have already submitted a request." })
     const result = await employeeSet.insertOne({
         ...req.body,
         role: "user",
@@ -68,15 +71,19 @@ app.post("/rider-request", async (req, res) => {
     res.send(result)
 })
 app.post("/create-parcel", async (req, res) => {
+
+    const deliveryCost = priceCalculator(req.body?.senderDivision, req.body?.receiverDivision, req.body?.parcelType, req.body?.weight)
+
     const result = await parcelSet.insertOne({
         ...req.body,
-        due: parseInt(req.body.due),
-        deliveryCost: parseInt(req.body.deliveryCost),
+        weight: parseFloat(req.body.weight),
+        due: parseInt(req.body.due || 0),
+        deliveryCost,
         state: [],
         status: "pending",
-        transactionId: {},
+        transactionId: null,
         paymentStatus: "unpaid",
-        paymentMethod: req.body.paymentMethod || "",
+        paymentMethod: req.body.paymentMethod || null,
         createdAt: new Date().toISOString(),
     })
     res.send(result)
@@ -91,28 +98,51 @@ app.patch("/rider-requests-status", async (req, res) => {
     })
     res.send(result)
 })
+app.patch("/update-paymentStatus", async (req, res) => {
+    const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
+    const session = await stripe.checkout.sessions.retrieve(req.body.session_id);
+    if (session.status === "complete") {
+        const parcel = await parcelSet.updateOne({ _id: new ObjectId(session.metadata.parcelId), transactionId: null }, {
+            $set: {
+                paymentStatus: session.payment_status,
+                paymentMethod: session.payment_method_types[0] || session.payment_method_types || null,
+                transactionId: session.payment_intent,
+                updatedAt: new Date().toISOString()
+            }
+        })
+        if(session.payment_status !== "paid") res.status(402).send({message: "There is something wrong with your payment process"})
+        else res.send(session.amount_total/100)
+    }
+    else res.status(404).send("Something went wrong!")
+})
 
 app.post('/create-checkout-session', async (req, res) => {
+
+    const parcel = await parcelSet.findOne({ _id: new ObjectId(req.body?.parcelId) })
+    if (!parcel) return res.status(404).send({ message: "Parcel details not found!" })
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
     const session = await stripe.checkout.sessions.create({
         line_items: [
             {
                 // Provide the exact Price ID (for example, price_1234) of the product you want to sell
                 price_data: {
-                    currency: 'usd',
-                    unit_amount: parseInt(req.body.cost) * 100,
+                    currency: 'BDT',
+                    unit_amount: parseFloat(parcel.deliveryCost) * 100,
                     product_data: {
-                        name: req.body.details
+                        name: parcel.parcelInfo
                     }
                 },
                 quantity: 1,
             },
         ],
-        customer_email: req.body.senderEmail,
+        customer_email: parcel.createdBy,
         mode: 'payment',
-        success_url: `${process.env.FRONTEND_URL}?success=true`,
-        cancel_url: `${process.env.FRONTEND_URL}?success=false`,
+        metadata: {
+            parcelId: parcel._id.toString(),
+            weight: parcel.weight
+        },
+        success_url: `${process.env.FRONTEND_URL}/after-payment?success=true&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${process.env.FRONTEND_URL}/after-payment?success=false`,
     });
-
-    res.redirect(303, session.url);
+    res.send({ url: session.url });
 });
