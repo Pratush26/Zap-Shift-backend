@@ -57,9 +57,13 @@ app.get("/divisions", async (req, res) => {
     const result = await divisionSet.find().toArray()
     res.send(result)
 })
+app.get("/track-parcel", async (req, res) => {
+    const result = await parcelSet.findOne({_id: new ObjectId(req.body.id)})
+    res.send(result)
+})
 
 app.post("/rider-request", async (req, res) => {
-    const exists = await employeeSet.findOne({ email: req.body.email })
+    const exists = await employeeSet.findOne({ email: req.body.email }, { projection: { email: 1 } })
     if (exists) return res.status(409).send({ message: "You have already submitted a request." })
     const result = await employeeSet.insertOne({
         ...req.body,
@@ -110,21 +114,28 @@ app.patch("/update-paymentStatus", async (req, res) => {
                 updatedAt: new Date().toISOString()
             }
         })
-        if(session.payment_status !== "paid") res.status(402).send({message: "There is something wrong with your payment process"})
-        else res.send(session.amount_total/100)
+        if (session.payment_status !== "paid") res.status(402).send({ message: "There is something wrong with your payment process" })
+        else res.send({ cost: session.amount_total / 100, currency: session.currency })
     }
     else res.status(404).send("Something went wrong!")
 })
 
 app.post('/create-checkout-session', async (req, res) => {
 
-    const parcel = await parcelSet.findOne({ _id: new ObjectId(req.body?.parcelId) })
+    const parcel = await parcelSet.findOne({ _id: new ObjectId(req.body?.parcelId) }, {
+        projection: {
+            deliveryCost: 1,
+            parcelInfo: 1,
+            createdBy: 1,
+            weight: 1,
+            _id: 1
+        }
+    })
     if (!parcel) return res.status(404).send({ message: "Parcel details not found!" })
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
     const session = await stripe.checkout.sessions.create({
         line_items: [
             {
-                // Provide the exact Price ID (for example, price_1234) of the product you want to sell
                 price_data: {
                     currency: 'BDT',
                     unit_amount: parseFloat(parcel.deliveryCost) * 100,
