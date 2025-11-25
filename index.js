@@ -10,8 +10,12 @@ const app = express();
 const port = process.env.PORT || 2000;
 const uri = process.env.DB;
 
-app.use(cors());
 app.use(express.json());
+app.use(cors({
+  origin: process.env.FRONTEND_URLS 
+    ? process.env.FRONTEND_URLS.split(',').map(url => url.trim()) 
+    : ['http://localhost:5173']
+}));
 
 const client = new MongoClient(uri, {
     serverApi: {
@@ -46,11 +50,11 @@ app.get("/services", async (req, res) => {
     res.send(result)
 })
 app.get("/ware-houses", async (req, res) => {
-    const result = await wareHouseSet.find({ status: "active" }).project({ city: 0, status: 0, flowchart: 0 }).toArray()
+    const result = await wareHouseSet.find({ status: "active" }).project({ city: 0, status: 0, flowchart: 0 }).sort({district: 1}).toArray()
     res.send(result)
 })
 app.get("/branches", async (req, res) => {
-    const result = await wareHouseSet.find({ status: "active" }).project({ district: 1, region: 1 }).toArray()
+    const result = await wareHouseSet.find({ status: "active" }).project({ district: 1, region: 1 }).sort({district: 1}).toArray()
     res.send(result)
 })
 app.get("/divisions", async (req, res) => {
@@ -58,7 +62,25 @@ app.get("/divisions", async (req, res) => {
     res.send(result)
 })
 app.get("/track-parcel", async (req, res) => {
-    const result = await parcelSet.findOne({_id: new ObjectId(req.body.id)})
+    const result = await parcelSet.findOne({ _id: new ObjectId(req.body.id) })
+    res.send(result)
+})
+app.get("/parcel-data", async (req, res) => {
+    const { email = "", status = "", limit = 10, skip = 0 } = req.body
+    const result = await parcelSet
+        .find({ createdBy: email, senderEmail: email, status: status })
+        .limit(limit)
+        .skip(skip)
+        .toArray()
+    res.send(result)
+})
+app.get("/find-employees", async (req, res) => {
+    const { requestedRole = "", status = "", role = "", limit = 10, skip = 0 } = req.body
+    const result = await employeeSet
+        .find({ requestedRole: requestedRole, role: role, status: status })
+        .limit(limit)
+        .skip(skip)
+        .toArray()
     res.send(result)
 })
 
@@ -115,7 +137,7 @@ app.patch("/update-paymentStatus", async (req, res) => {
             }
         })
         if (session.payment_status !== "paid") res.status(402).send({ message: "There is something wrong with your payment process" })
-        else res.send({ cost: session.amount_total / 100, currency: session.currency })
+        else res.send({ cost: session.amount_total / 100, currency: session.currency, parcelId: session.metadata.parcelId })
     }
     else res.status(404).send("Something went wrong!")
 })
