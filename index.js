@@ -9,12 +9,11 @@ dotenv.config();
 const app = express();
 const port = process.env.PORT || 2000;
 const uri = process.env.DB;
+const allowedOrigins = process.env.FRONTEND_URLS.split(",");
 
 app.use(express.json());
 app.use(cors({
-  origin: process.env.FRONTEND_URLS 
-    ? process.env.FRONTEND_URLS.split(',').map(url => url.trim()) 
-    : ['http://localhost:5173']
+    origin: allowedOrigins ? allowedOrigins : ['http://localhost:5173']
 }));
 
 const client = new MongoClient(uri, {
@@ -50,36 +49,49 @@ app.get("/services", async (req, res) => {
     res.send(result)
 })
 app.get("/ware-houses", async (req, res) => {
-    const result = await wareHouseSet.find({ status: "active" }).project({ city: 0, status: 0, flowchart: 0 }).sort({district: 1}).toArray()
+    const result = await wareHouseSet.find({ status: "active" }).project({ city: 0, status: 0, flowchart: 0 }).sort({ district: 1 }).toArray()
     res.send(result)
 })
 app.get("/branches", async (req, res) => {
-    const result = await wareHouseSet.find({ status: "active" }).project({ district: 1, region: 1 }).sort({district: 1}).toArray()
+    const result = await wareHouseSet.find({ status: "active" }).project({ district: 1, region: 1 }).sort({ district: 1 }).toArray()
     res.send(result)
 })
 app.get("/divisions", async (req, res) => {
     const result = await divisionSet.find().toArray()
     res.send(result)
 })
-app.get("/track-parcel", async (req, res) => {
-    const result = await parcelSet.findOne({ _id: new ObjectId(req.body.id) })
+app.get("/track-parcel/:id", async (req, res) => {
+    const result = await parcelSet.findOne({ _id: new ObjectId(req.params.id) })
     res.send(result)
 })
 app.get("/parcel-data", async (req, res) => {
-    const { email = "", status = "", limit = 10, skip = 0 } = req.body
+    const { email = "", status = "", limit = 10, skip = 0 } = req.query
+    const query = {}
+    if (!!email) {
+        query.$or = [
+            { createdBy: email },
+            { senderEmail: email }
+        ];
+    }
+    if (!!status) query.status = status;
+
     const result = await parcelSet
-        .find({ createdBy: email, senderEmail: email, status: status })
-        .limit(limit)
-        .skip(skip)
+        .find(query)
+        .limit(parseInt(limit))
+        .skip(parseInt(skip))
         .toArray()
     res.send(result)
 })
 app.get("/find-employees", async (req, res) => {
-    const { requestedRole = "", status = "", role = "", limit = 10, skip = 0 } = req.body
+    const { requestedRole = "", status = "", role = "", limit = 10, skip = 0 } = req.query
+    const query = {}
+    if (!!status) query.status = status;
+    if (!!requestedRole) query.requestedRole = requestedRole;
+    if (!!role) query.role = role;
     const result = await employeeSet
-        .find({ requestedRole: requestedRole, role: role, status: status })
-        .limit(limit)
-        .skip(skip)
+        .find(query)
+        .limit(parseInt(limit))
+        .skip(parseInt(skip))
         .toArray()
     res.send(result)
 })
@@ -143,7 +155,11 @@ app.patch("/update-paymentStatus", async (req, res) => {
 })
 
 app.post('/create-checkout-session', async (req, res) => {
+    const origin = req.headers.origin;
 
+    if (!allowedOrigins.includes(origin)) {
+        return res.status(403).send({ error: "Origin not allowed" });
+    }
     const parcel = await parcelSet.findOne({ _id: new ObjectId(req.body?.parcelId) }, {
         projection: {
             deliveryCost: 1,
@@ -174,8 +190,8 @@ app.post('/create-checkout-session', async (req, res) => {
             parcelId: parcel._id.toString(),
             weight: parcel.weight
         },
-        success_url: `${process.env.FRONTEND_URL}/after-payment?success=true&session_id={CHECKOUT_SESSION_ID}`,
-        cancel_url: `${process.env.FRONTEND_URL}/after-payment?success=false`,
+        success_url: `${origin}/after-payment?success=true&session_id={CHECKOUT_SESSION_ID}`,
+        cancel_url: `${origin}/after-payment?success=false`,
     });
     res.send({ url: session.url });
 });
