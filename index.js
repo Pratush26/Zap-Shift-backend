@@ -41,59 +41,164 @@ const parcelSet = database.collection("parcels");
 //  Public Api
 app.get("/", async (req, res) => res.send("Server is getting!"))
 app.get("/reviews", async (req, res) => {
-    const result = await reviewSet.find().toArray()
-    res.send(result)
+    try {
+        const result = await reviewSet.find().toArray()
+        res.send(result)
+    } catch (error) {
+        console.error("DB error: ", error)
+        return [];
+    }
 })
 app.get("/services", async (req, res) => {
-    const result = await serviceSet.find().toArray()
-    res.send(result)
+    try {
+        const result = await serviceSet.find().toArray()
+        res.send(result)
+    } catch (error) {
+        console.error("DB error: ", error)
+        return [];
+    }
 })
 app.get("/ware-houses", async (req, res) => {
-    const result = await wareHouseSet.find({ status: "active" }).project({ city: 0, status: 0, flowchart: 0 }).sort({ district: 1 }).toArray()
-    res.send(result)
+    try {
+        const result = await wareHouseSet.find({ status: "active" }).project({ city: 0, status: 0, flowchart: 0 }).sort({ district: 1 }).toArray()
+        res.send(result)
+    } catch (error) {
+        console.error("DB error: ", error)
+        return [];
+    }
 })
 app.get("/branches", async (req, res) => {
-    const result = await wareHouseSet.find({ status: "active" }).project({ district: 1, region: 1 }).sort({ district: 1 }).toArray()
-    res.send(result)
+    try {
+        const result = await wareHouseSet.find({ status: "active" }).project({ district: 1, region: 1 }).sort({ district: 1 }).toArray()
+        res.send(result)
+    } catch (error) {
+        console.error("DB error: ", error)
+        return [];
+    }
 })
 app.get("/divisions", async (req, res) => {
-    const result = await divisionSet.find().toArray()
-    res.send(result)
+    try {
+        const result = await divisionSet.find().toArray()
+        res.send(result)
+    } catch (error) {
+        console.error("DB error: ", error)
+        return [];
+    }
 })
 app.get("/track-parcel/:id", async (req, res) => {
-    const result = await parcelSet.findOne({ _id: new ObjectId(req.params.id) })
-    res.send(result)
+    try {
+        const result = await parcelSet.findOne({ _id: new ObjectId(req.params.id) })
+        res.send(result)
+    } catch (error) {
+        console.error("DB error: ", error)
+        return {};
+    }
+})
+app.get("/track-deliveries", async (req, res) => {
+    try {
+        const today = new Date();
+        const lastWeek = new Date();
+        lastWeek.setDate(today.getDate() - 7);
+
+        const statesResult = await parcelSet.aggregate([
+            {
+                $group: {
+                    _id: '$status',
+                    count: { $sum: 1 }
+                }
+            },
+        ]).toArray()
+
+        const deliveriesResult = await parcelSet.aggregate([
+            { $unwind: "$state" },
+            {
+                $match: {
+                    "state.title": "Delivered",
+                    "state.createdAt": {
+                        $gte: lastWeek.toISOString(),
+                    }
+                }
+            },
+            {
+                $group: {
+                    _id: { $dateToString: { format: "%Y-%m-%d", date: { $toDate: "$state.createdAt" } } },
+                    count: { $sum: 1 }
+                }
+            },
+            { $sort: { "_id": 1 } }
+        ]).toArray()
+
+        res.send({ statesResult, deliveriesResult })
+    } catch (error) {
+        console.error("DB error: ", error)
+        return { statesResult: [], deliveriesResult: [] };
+    }
+})
+app.get("/rider-deliveries", async (req, res) => {
+    try {
+        const pipeline = [
+            { $unwind: "$state" },
+            {
+                $match: {
+                    "state.title": "Delivered",
+                    "riderEmail": req.query.email
+                }
+            },
+            {
+                $group: {
+                    _id: { $dateToString: { format: "%Y-%m-%d", date: { $toDate: "$state.createdAt" } } },
+                    count: { $sum: 1 }
+                }
+            },
+            { $sort: { "_id": 1 } }
+        ]
+        const result = await parcelSet.aggregate(pipeline).toArray()
+        res.send(result)
+    } catch (error) {
+        console.error("DB error: ", error)
+        return [];
+    }
 })
 app.get("/parcel-data", async (req, res) => {
-    const { email = "", status = "", limit = 10, skip = 0 } = req.query
-    const query = {}
-    if (!!email) {
-        query.$or = [
-            { createdBy: email },
-            { senderEmail: email }
-        ];
-    }
-    if (!!status) query.status = status;
+    try {
+        const { email = "", status = "", limit = 10, skip = 0 } = req.query
+        const query = {}
+        if (!!email) {
+            query.$or = [
+                { createdBy: email },
+                { senderEmail: email }
+            ];
+        }
+        if (!!status) query.status = status;
 
-    const result = await parcelSet
-        .find(query)
-        .limit(parseInt(limit))
-        .skip(parseInt(skip))
-        .toArray()
-    res.send(result)
+        const result = await parcelSet
+            .find(query)
+            .limit(parseInt(limit))
+            .skip(parseInt(skip))
+            .toArray()
+        res.send(result)
+    } catch (error) {
+        console.error("DB error: ", error)
+        return [];
+    }
 })
 app.get("/find-employees", async (req, res) => {
-    const { requestedRole = "", status = "", role = "", limit = 10, skip = 0 } = req.query
-    const query = {}
-    if (!!status) query.status = status;
-    if (!!requestedRole) query.requestedRole = requestedRole;
-    if (!!role) query.role = role;
-    const result = await employeeSet
-        .find(query)
-        .limit(parseInt(limit))
-        .skip(parseInt(skip))
-        .toArray()
-    res.send(result)
+    try {
+        const { requestedRole = "", status = "", role = "", limit = 10, skip = 0 } = req.query
+        const query = {}
+        if (!!status) query.status = status;
+        if (!!requestedRole) query.requestedRole = requestedRole;
+        if (!!role) query.role = role;
+        const result = await employeeSet
+            .find(query)
+            .limit(parseInt(limit))
+            .skip(parseInt(skip))
+            .toArray()
+        res.send(result)
+    } catch (error) {
+        console.error("DB error: ", error)
+        return [];
+    }
 })
 
 app.post("/rider-request", async (req, res) => {
@@ -146,7 +251,14 @@ app.patch("/update-paymentStatus", async (req, res) => {
                 paymentMethod: session.payment_method_types[0] || session.payment_method_types || null,
                 transactionId: session.payment_intent,
                 updatedAt: new Date().toISOString()
-            }
+            },
+            $push: {
+                state: {
+                    title: "Payment Successful",
+                    completed: true,
+                    createdAt: new Date().toISOString()
+                }
+            },
         })
         if (session.payment_status !== "paid") res.status(402).send({ message: "There is something wrong with your payment process" })
         else res.send({ cost: session.amount_total / 100, currency: session.currency, parcelId: session.metadata.parcelId })
