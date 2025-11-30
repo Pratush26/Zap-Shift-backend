@@ -124,6 +124,8 @@ app.get("/track-parcel/:id", async (req, res) => {
         return {};
     }
 })
+
+//  Private apis
 app.get("/track-deliveries", async (req, res) => {
     try {
         const today = new Date();
@@ -191,7 +193,7 @@ app.get("/rider-deliveries", async (req, res) => {
 })
 app.get("/parcel-data", async (req, res) => {
     try {
-        const { email = "", status = "", limit = 10, skip = 0 } = req.query
+        const { email = "", status = "", limit = 10, skip = 0, sort = 1 } = req.query
         const query = {}
         if (!!email) {
             query.$or = [
@@ -203,6 +205,7 @@ app.get("/parcel-data", async (req, res) => {
 
         const result = await parcelSet
             .find(query)
+            .sort({createdAt: parseInt(sort)})
             .limit(parseInt(limit))
             .skip(parseInt(skip))
             .toArray()
@@ -237,6 +240,7 @@ app.post("/rider-request", async (req, res) => {
     const result = await employeeSet.insertOne({
         ...req.body,
         role: "user",
+        active: "not-available",
         status: "pending",
         createdAt: new Date().toISOString(),
         updatedAt: new Date().toISOString(),
@@ -261,15 +265,22 @@ app.post("/create-parcel", verifyToken, async (req, res) => {
     })
     res.send(result)
 })
-app.patch("/rider-requests-status", async (req, res) => {
-    const result = await employeeSet.updateOne({ _id: new ObjectId(req.body.id) }, {
-        $set: {
-            role: req.body.status === "approved" ? "rider" : "user",
-            status: req.body.status,
-            updatedAt: new Date().toISOString()
-        }
-    })
-    res.send(result)
+app.patch("/update-employees-role", verifyToken, async (req, res) => {
+    try {
+        console.log(req.body)
+        const result = await employeeSet.updateOne({ _id: new ObjectId(req.body.id) }, {
+            $set: {
+                role: req.body.status === "approved" ? req.body.role : "user",
+                status: req.body.status,
+                updatedAt: new Date().toISOString()
+            }
+        })
+        if (!result.modifiedCount) res.status(400).send({ success: false, message: "Failed to update user role" })
+        else res.status(200).send({ success: true, message: "Successfully updated user role" })
+    } catch (error) {
+        console.error("Role updating error: ", error)
+        res.status(500).send({ success: false, message: "Sever Error!" })
+    }
 })
 app.patch("/update-paymentStatus", async (req, res) => {
     const stripe = new Stripe(process.env.STRIPE_SECRET_KEY);
