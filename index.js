@@ -191,6 +191,17 @@ app.get("/rider-deliveries", async (req, res) => {
         return [];
     }
 })
+app.get("/check-assignedJob", async (req, res) => {
+    try {
+        const rider = await employeeSet.findOne({ email: req.query.riderEmail })
+        if (!rider) return res.send([])
+        const result = await parcelSet.find({ assigned: { $in: [rider._id.toString()] } }).sort({ createdAt: -1 }).toArray()
+        res.send(result)
+    } catch (error) {
+        console.error("DB error: ", error)
+        return res.send([]);
+    }
+})
 app.get("/parcel-data", async (req, res) => {
     try {
         const { email = "", status = "", limit = 10, skip = 0, sort = 1 } = req.query
@@ -205,7 +216,7 @@ app.get("/parcel-data", async (req, res) => {
 
         const result = await parcelSet
             .find(query)
-            .sort({createdAt: parseInt(sort)})
+            .sort({ createdAt: parseInt(sort) })
             .limit(parseInt(limit))
             .skip(parseInt(skip))
             .toArray()
@@ -265,9 +276,76 @@ app.post("/create-parcel", verifyToken, async (req, res) => {
     })
     res.send(result)
 })
+app.patch("/assign-parcel", verifyToken, async (req, res) => {
+    try {
+        const exists = await parcelSet.findOne({ _id: new ObjectId(req?.body?.parcelId) })
+        if (exists?.assigned?.includes(req.body.riderId)) return res.status(400).send({ success: false, message: "Rider is already assigned" })
+
+        const result = await parcelSet.updateOne({ _id: new ObjectId(req.body.parcelId) }, {
+            $push: { assigned: req.body.riderId },
+            $set: { updatedAt: new Date().toISOString() }
+        }
+        )
+        if (!result.modifiedCount) res.status(400).send({ success: false, message: "Failed to assign rider" })
+        else res.status(200).send({ success: true, message: "Successfully assigned rider" })
+    } catch (error) {
+        console.error("Role updating error: ", error)
+        res.status(500).send({ success: false, message: "Sever Error!" })
+    }
+})
+app.patch("/handle-assigned-job", verifyToken, async (req, res) => {
+    try {
+        const { parcelId, riderEmail, accepted } = req.body;
+        const rider = await employeeSet.findOne({ email: riderEmail })
+        if (!rider) return res.status(403).send({ success: false, message: "Unauthorized Access!" })
+        if (!accepted) {
+            const result = await parcelSet.updateOne({ _id: new ObjectId(parcelId) },
+                {
+                    $pull: { assigned: rider._id.toString() },
+                    $set: { updatedAt: new Date().toISOString() }
+                }
+            )
+            if (!result.modifiedCount) res.status(400).send({ success: false, message: "Failed to reject assigned job" })
+            else res.status(200).send({ success: true, message: "Successfully rejected assigned job" })
+        } else {
+            const result = await parcelSet.updateOne({ _id: new ObjectId(parcelId) },
+                {
+                    $set: {
+                        assigned: [],
+                        status: "assigned",
+                        updatedAt: new Date().toISOString()
+                    },
+                    $push: {
+                        state: {
+                            title: `Your parcel will soon pick up by Rider - ${rider.name}`,
+                            completed: false,
+                            createdAt: new Date().toISOString()
+                        }
+                    },
+                }
+            )
+            const today = new Date().toDateString()
+            const riderDay = rider?.getWorkToday?.createdAt
+            let newCount = 1
+            if (today == riderDay) newCount += rider.getWorkToday.count
+            await employeeSet.updateOne({ _id: rider._id },
+                {
+                    $set: {
+                        "getWorkToday.count": newCount,
+                        "getWorkToday.createdAt": today
+                    }
+                }
+            );
+            if (!result.modifiedCount) res.status(400).send({ success: false, message: "Failed to accept assigned job" })
+            else res.status(200).send({ success: true, message: "Successfully accepted assigned job" })
+        }
+    } catch (error) {
+        console.error("handling assigned job updating error: ", error)
+        res.status(500).send({ success: false, message: "Sever Error!" })
+    }
+})
 app.patch("/update-employees-role", verifyToken, async (req, res) => {
     try {
-        console.log(req.body)
         const result = await employeeSet.updateOne({ _id: new ObjectId(req.body.id) }, {
             $set: {
                 role: req.body.status === "approved" ? req.body.role : "user",
